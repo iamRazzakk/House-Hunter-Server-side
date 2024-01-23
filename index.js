@@ -6,7 +6,7 @@ const port = process.env.PORT || 5000;
 // middleware
 app.use(cors());
 app.use(express.json());
-const bcrypt = require('bcrypt');
+const bcrypt = require("bcrypt");
 // mongodb
 
 const uri =
@@ -24,23 +24,69 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     const usersCollection = client.db("houseHunterDB").collection("users");
+    const propertyCollection = client
+      .db("houseHunterDB")
+      .collection("property");
+
     app.post("/users", async (req, res) => {
       const user = req.body;
+      console.log( user.password);
+      const hashedPassword = await bcrypt.hash(user.password, 10);
+      user.password = hashedPassword;
+
       const query = { email: user.email };
       const existingUser = await usersCollection.findOne(query);
+
       if (existingUser) {
-        return res.send({ message: "user already exists", insertedId: null });
+        return res.send({ message: "User already exists", insertedId: null });
       }
+
       const result = await usersCollection.insertOne(user);
       res.send(result);
+    });
+
+    app.post("/login", async (req, res) => {
+      try {
+        const { email, password } = req.body;
+        const user = await usersCollection.findOne({ email });
+
+        if (!user) {
+          return res.send({ success: false, message: "User not found" });
+        }
+
+        console.log("Provided Password:", password);
+        console.log("Provided Password Hash:", await bcrypt.hash(password, 10));
+        console.log("Stored Password Hash:", user.password); 
+        const passwordMatch = await bcrypt.compare(password, user.password);
+        console.log("Password Match Result:", passwordMatch);
+
+        if (passwordMatch) {
+          res.send({ success: true, message: "Login successful" });
+        } else {
+          res.send({ success: false, message: "Incorrect password" });
+        }
+      } catch (error) {
+        console.error("Error during login:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Internal server error" });
+      }
     });
 
     app.get("/users", async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
-  
-    
+    app.post("/owner", async (req, res) => {
+      const data = req.body;
+      const result = await propertyCollection.insertOne(data);
+      res.send(result);
+    });
+    app.get("/owner", async (req, res) => {
+      const result = await propertyCollection.find().toArray();
+      res.send(result);
+    });
+
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
     // Send a ping to confirm a successful connection
